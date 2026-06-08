@@ -1,0 +1,679 @@
+---
+title: "Introduction to logistic regression"
+author: "Maria Korochkina"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    toc: true
+    toc_depth: 5
+fontsize: 16pt
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r, results = "hide", message = F, warning = F, echo = FALSE}
+rm(list=ls())
+
+library("tidyverse")
+
+# set directory to source file location
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+```
+
+# What is logistic regression and when should you use it?
+
+Logistic regression belongs to the family of models called *Generalised Linear Models* (GLM). These models were developed to extend the *linear* regression framework to situations where the dependent variable is *categorical*. In logistic regression, the aim is to predict the class (i.e., category) of the outcome variable.
+
+The type of logistic regression you need depends on the nature of your (categorical) dependent variable:
+
+- If the variable has two possible values (e.g., 0 versus 1, or pass versus fail), you use **_binomial_ logistic regression**.
+
+- If the variable has more than two possible values, you use **_multinomial_ logistic regression**. A special case of multinomial regression occurs when the outcome categories have a natural order. Such variables are called *ordinal* (e.g., a Likert scale from 1 to 7). In this case, the appropriate model is **_ordinal_ logistic regression**.
+
+Just like in linear regression, the number of predictors also matters:
+
+- With one predictor variable, we speak of a **_simple_ logistic regression**.
+
+- With several predictors, the correct term is **_multiple_ logistic regression**.
+
+In this session, we will go through each of these cases one by one, and I will show you how to apply the models in R. Before we do that, however, let's make sure we understand what logistic regression represents in mathematical terms, and the logic behind the logistic function itself.
+
+Recall that we use a linear regression to predict a continuous outcome:
+
+$$
+y = \beta_0 + \beta_1 x_1 + \ldots + \beta_n x_n + \epsilon
+$$
+In the formula above, $y$ is the *dependent variable* (i.e., the outcome you want to predict) and $x_n$ to $x_n$ are the *independent variables* (also called *predictors*). $\beta_0$ is the *intercept* (the expected value of $y$ when all predictors are 0), and $\beta_1$ to $\beta_n$ are the regression *coefficients* (or *slopes*). Each slope represents the change in $y$ for a one-unit change in the corresponding predictor $x_i$, while holding the other predictors constant. Finally, $\epsilon$ is the *error term* (or *residual*), which represents the variation in $y$ that is not explained by the predictors in the model.
+
+In logistic regression, the overall structure of the model is very similar. However, instead of modelling $y$ directly, we model the *logit of the probability* that $y$ takes a certain value (e.g., 0 or 1) or belongs to a particular class. 
+
+
+$$
+\text{logit}(p) = \log\left(\frac{p}{1 - p}\right) = \beta_0 + \beta_1 x_1 + \ldots + \beta_k x_k
+$$
+Here, $p$ is the *probability* that $y$ belongs to the class of interest (e.g., $P(Y=1)$). The term $\text{logit}(p)$ is the *log-odds*, which means the logarithm of the odds. The odds are defined as $p/(1-p)$, or the ratio of the probability of success to the probability of failure. 
+
+The right-hand side of the equation ($\beta_0 + \beta_1 x_1 + \ldots + \beta_n x_n$) is called the *linear predictor*, just as in linear regression. The first thing you might notice is that this expression does not include a residual term, $\epsilon$. In a linear regression model, the outcome is numeric, and since predictions are never perfect, the residual captures what is left unexplained. We usually assume this residual follows a normal distribution, and that is where the randomness in the model comes from. By contrast, in logistic regression the outcome is categorical (e.g., pass vs. fail). The model predicts the probability of each possible category. We don't need an explicit residual term here because the randomness is already built in: each outcome is like a coin flip with probability $p$. 
+
+If the outcome variable is binary, each value in the outcome is modeled as a random draw from a *Bernoulli distribution*. The Bernoulli distribution is the simplest probability model. It's like flipping a coin: there are only two possible outcomes, and each flip has a fixed probability of coming up heads versus tails. The Bernoulli distribution forms the basis of the *binomial distribution*, which is used when we are interested in the total number of "successes" across several independent trials. In other words, the binomial distribution is just the sum of multiple independent Bernoulli trials. If we move beyond binary outcomes and allow for more than two categories, then the relevant distribution is the *multinomial distribution*, which generalises the Bernoulli to multiple categories. We won't go into more detail about these distributions in this course, but it's worth reviewing the formulas to make sure you understand the connection.
+
+Because the linear predictor ranges from $-\infty$ to $+\infty$, we need the logit: it also takes values from $-\infty$ to $+\infty$ and is therefore compatible with the linear predictor (in contrast to probability, which can only range from 0 to 1). So, just to reiterate, logistic regression fits a *linear model on the log-odds scale*.
+
+The problem is, however, that we normally want *probabilities*, not log-odds, because probabilities are much easier to understand and relate directly to our research questions. So after fitting the model on the logit scale, we need to transform it back to a probability between 0 and 1.
+
+We do this using the *inverse of the logit*, which is also called the *(standard) logistic function*, or *sigmoid*:
+
+$$
+p = \frac{1}{1 + e^{-(\beta_0 + \beta_1x_1 + \ldots + \beta_n x_n)}}
+$$
+
+The word *sigmoid* comes from the Greek letter $\sigma$ (sigma) because the curve of the logistic function has an s-shape: it starts near 0, increases smootly, and then levels off near 1. If we simply the expression above and replace the linear predictor with the term $z$, the sigmoid can be expressed as:
+
+$$
+p = \frac{1}{1 + e^{-z}}
+$$
+This formula shows that as the linear predictor $z$ approaches $-\infty$, the probability $p$ approaches 0, and as $z \to +\infty$, $p \to 1$. When $z = 0$, $p = 0.5$, which marks the midpoint of the curve. Consequently, the curve is symmetric around the point $(0, 0.5)$.
+
+```{r, echo = FALSE}
+# generate some values for the linear predictor z
+z <- seq(-10, 10, length.out = 200)
+
+# apply logistic function
+logistic <- 1 / (1 + exp(-z))
+
+# create a data frame
+df <- data.frame(z = z, p = logistic)
+
+# plot
+ggplot(df, aes(x = z, y = p)) +
+  geom_line(color = "blue", size = 1.2) +
+  geom_hline(yintercept = c(0, 0.5, 1), linetype = "dashed", color = "gray") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +
+  labs(x = "Linear predictor (z)", y = "Probability (p)") +
+  theme_classic(base_size = 14)
+```
+
+This smooth s-shape is what makes logistic regression so useful: it naturally maps any real number ($z$) into a probability between 0 and 1.
+
+## Model assumptions
+
+Just like with any model, the results from logistic regression only make sense if the assumptions behind the model are true. That's why we should always check these assumptions first, before trying to interpret what the model is telling us. Let's look at the main assumptions of logistic regression so that we know how to assess the models when we fit them.
+
+### Type of outcome variable
+
+The first set of assumptions is pretty simple, and we've already mentioned them. The type of logistic regression you use depends on the kind of outcome variable you have:
+
+- Binomial logistic regression: the outcome must be binary (two categories, e.g., yes/no);
+
+- Multinomial logistic regression: the outcome must be categorical with more than two unordered categories;
+
+- Ordinal logistic regression: the outcome must be categorical with more than two ordered categories.
+
+### Independent observations
+
+The second assumption is that each observation in your dataset should be independent of the others. This means that if your dataset includes repeated measures (e.g., the same participant measured several times), hierarchical (nested) data (i.e., units at one level are grouped within units at a higher level; e.g., students within schools and schools within cities), or matched pairs (i.e., each observation in one group is paired with a related observation in another group; e.g., each patient with a disease is matched to a healthy control of the same age and sex), you will need to use mixed-effects models: `glmer()` for binomial regression, `clmm()` for ordinal regression, or a Bayesian framework for multinomial regression.
+
+### Linearity (for continuous predictors)
+
+Logistic models assume that each continuous predictor has a linear relationship with the log odds of the outcome.
+
+### No collinearity
+
+If your model includes several continuous predictors, make sure they are not (strongly) correlated with each other. One way to check this is by looking at the Variance Inflation Factor (VIF) using the `vif()` function from the `car` package.
+
+### Other assumptions
+
+Other assumptions include the distributional assumption and the proportional odds assumption, but these only apply to binomial and ordinal logistic regression, respectively. We'll discuss these in more detail when we get to those types of models.
+
+Now that we've covered the basics of the logistic function and the logit, let's see how to fit logistic regression models, starting with binomial logistic regression (i.e., when the outcome variable has two possible categories).
+
+# Binomial logistic regression
+
+## Simple logistic regression
+
+Let's use the built-in dataset `mtcars`. These data were extracted from a US magazine in the 1970s and contain information on various properties of different cars.
+
+```{r}
+data(mtcars)
+head(mtcars)
+```
+
+Imagine we are interested in examining how likely a car is to have an automatic or manual transmission based on its horsepower. The variable `am` contains the transmission type, with two categories: 0 for automatic and 1 for manual. Each car's horsepower is recorded in the variable `hp`. 
+
+```{r}
+# ensure that the variable "am" is a factor and assign labels
+mtcars$am <- factor(mtcars$am, labels = c("Automatic", "Manual"))
+
+# fit the model
+m_binom_single <- glm(am ~ hp, data = mtcars, family = binomial)
+```
+
+When fitting a model, we need to specify the type of model to use. Here, I set the family to *binomial* because our dependent variable is a factor with two levels. Since we have not specified any contrasts, R applies its default contrast coding, called *treatment contrast coding*, with the level coded as 0 (automatic) serving as the reference category. This means the model estimates the log-odds of a car having a manual transmission relative to having an automatic transmission as a function of horsepower. We will not be discussing contrast coding in detail in this course; however, it is an **extremely** important topic, and you should never fit or interpret any statistical model without knowing which contrast coding you are using and why. For a clear and comprehensive introduction, I refer you to an excellent [tutorial by Daniel Schad](https://doi.org/10.1016/j.jml.2019.104038) on this topic. 
+
+The fitted model therefore has the form:
+
+\[
+ y = \log \left( \frac{P(\text{manual})}{P(\text{automatic})} \right) = \beta_0 + \beta_1 \cdot hp
+\]
+
+This is a very important point: each model provides the log-odds of being in one category **relative to the reference category**, not the absolute log-odds of being in that category. This distinction is often misunderstood, so imake sure you understand this.
+
+Before we interpret the model, we need to check whether the assumptions are met. We already know that we are using the right type of model for our data and that the observations are independent. So we only have two assumptions to check: first, we should check whether there is a linear relationship between the continuous predictor `hp` and the logit of the outcome (the linearity assumption). Second, we need to consider the distributional assumption. The idea here is that the model assumes that the variance is fully determined by the mean (and, for binomial data, the number of trials). In other words, the model assumes that the data follow a binomial distribution, and that the variability we see is exactly what we expect given the predicted probabilities. If the actual data are more variable (i.e., there is extra variability, called overdispersion), the model's standard errors may be underestimated, which can lead to inflated Type I error rates.
+
+A useful package to do this is `DHARMa`:
+
+```{r}
+library("DHARMa")
+```
+
+The first step is to compute the model residuals using the `simulateResiduals` function and then plot the results:
+
+```{r}
+simulationOutput <- simulateResiduals(fittedModel = m_binom_single, plot = F)
+plot(simulationOutput)
+```
+
+The function produces two plots, which can also be called separately (`plotQQunif()` for the left plot and `plotResiduals()` for the right plot). Extended explanations and examples can be found in the package documentation and the [vignette](https://cran.r-project.org/web/packages/DHARMa/vignettes/DHARMa.html).  
+
+In brief, the left plot (the QQ-plot) detects overall deviations from the expected distribution. By default, it also includes tests for correct distribution, dispersion, and outliers. The right plot (residuals vs. predicted values) shows the residuals plotted against the predicted values. Simulation outliers (data points outside the range of simulated values) are highlighted as red stars (in this case, we don't have any).  
+
+By default, residuals are plotted against predicted values. You can also plot residuals against a specific predictor of your choice, which is often useful:
+
+```{r}
+plotResiduals(simulationOutput, form = mtcars$hp)
+```
+
+For a correctly specified model, the residuals should be uniformly distributed. This means that the theoretical expectations for these regressions are straight lines at 0.25, 0.5, and 0.75, which are shown as dashed black lines on the plot. However, even a perfect model can show some deviations from these lines just by chance, especially when the sample size is small. The function therefore tests whether the deviation of the fitted quantile regression from the expected line is statistically significant: if it is, the corresponding quantile regression line is highlighted in red, and a warning is displayed on the plot. And this is exactly what we see in this example.
+
+I would say this is likely due to the small sample size. Luckily, the plot doesn't show clear signs of severe overdispersion (too many residuals near 0 or 1) or underdispersion (too many residuals near 0.5), and this is confirmed by the tests for distribution, dispersion, and outliers. We can also get more detailed information by running:
+
+```{r}
+testDispersion(simulationOutput)
+```
+
+Overall, the model isn't perfect, but it doesn't look too bad. For now, this is not a major concern, so let's move on and take a look at the model's results.
+
+```{r}
+summary(m_binom_single)
+```
+
+Remember that the intercept is the estimated outcome when the predictor of interest is equal to 0. In this model, the intercept is the log-odds of having a manual transmission when horsepower is 0, and its value is `r coef(m_binom_single)[1]`. Of course, 0 horsepower isn't meaningful for real cars, so the intercept is not of interest for us; it just serves as the baseline from which the effect of the predictor is measured.
+
+As you remember, in a regression, the slope represents the estimated change in the outcome variable for a one-unit change in the predictor. Here, the slope `r coef(m_binom_single)[2]`represents the estimated change in the log-odds of having a manual (relative to automatic) transmission for each additional unit of horsepower.
+
+In other words, for each one-unit increase in horsepower, the odds of a car having a manual transmission are multiplied by:
+
+```{r}
+exp(coef(m_binom_single)[2])
+```
+
+And this exponentiated coefficient is the odds ratio.
+
+The *z value* reported by the model is the test statistic for determining whether a coefficient is significantly different from 0. It is calculated as the estimate divided by its standard error, which tells us how many standard errors the coefficient is away from 0. The sign of the z value matches the sign of the coefficient: a negative value means that the predictor is associated with decreasing log-odds of the outcome, and a positive number means that the predictor is associated with increasing log-odds of the outcome.
+
+Here, the z value for horsepower is `r round(summary(m_binom_single)$coefficients["hp", 3],2)`, indicating that this predictor is estimated to decrease the log-odds of the car having a manual relative to an automatic transmission. But is this effect significant?
+
+The Pr(>|z|) value gives the *p-value* associated with this test. Here, it is not below 0.05, the conventional threshold in psychology, suggesting that we cannot reject the null hypothesis of no effect. In other words, we cannot reject the hypothesis that horsepower does not affect the likelihood of a car being manual rather than automatic in this dataset.
+
+Let's now look at specific examples to make sure we fully understand how the model works. For instance, let's compute the odds of having a manual rather than an automatic transmission a car with 110 horsepower:
+
+```{r}
+log_odds <- coef(m_binom_single)[1] + coef(m_binom_single)[2]*110
+odds <- exp(log_odds)
+odds
+```
+
+The odds are about `r round(odds,2)` to 1, meaning that the car is slightly less likely to be manual than automatic. 
+
+What about a car with 200 horsepower?
+
+```{r}
+log_odds <- coef(m_binom_single)[1] + coef(m_binom_single)[2]*200
+odds <- exp(log_odds)
+odds
+```
+
+Here, the odds are substantially less than 1, so a car with 200 horsepower is much less likely to be manual than automatic.
+
+Remember that odds are not the same as probabilities, so to interpret this result in terms of probability, we need to make one more step:
+
+```{r}
+prob <- odds / (1 + odds)
+prob
+```
+
+This gives a probability of `r round(prob*100,1)`%, meaning that a car with 200 horsepower has about a 30% probability of being manual (or 70% probability of being automatic). 
+
+## Multiple logistic regression
+
+Now that we've looked at a binomial regression with one predictor, let's explore what changes when we include multiple predictors and fit a multiple logistic regression model.
+
+Suppose our research question is: How likely is a car to have a manual, relative to an automatic, transmission based on its horsepower (`hp`), weight (`wt`), and engine shape (`vs`), where 0 indicates a V-shaped engine and 1 indicates a straight engine? 
+
+```{r}
+m_binom_multiple <- glm(am ~ hp + wt + vs, data = mtcars, family = binomial)
+```
+
+This model has the form:
+
+\[
+ y = \log \left( \frac{P(\text{manual})}{P(\text{automatic})} \right) = \beta_0 + \beta_1 \cdot hp + \beta_2 \cdot wt + \beta_3 \cdot vs
+\]
+
+As always, let's have a look at the assumptions first:
+
+```{r}
+simulationOutput <- simulateResiduals(fittedModel = m_binom_multiple, plot = F)
+plot(simulationOutput)
+```
+
+Here, the assumption violations are clearly more pronounced than in the single binomial regression. The next question is which predictor is causing the issue.
+
+```{r}
+plotResiduals(simulationOutput, form = mtcars$hp)
+```
+
+Not horsepower!
+
+```{r}
+plotResiduals(simulationOutput, form = mtcars$wt)
+```
+
+It turns out the problematic predictor is weight! We should keep this in mind and be cautious about interpreting its effect (or consider removing it from the model). Since we now have two continuous predictors, it's also possible that collinearity between them is contributing to the issue. Let's check for that:
+
+```{r}
+library("car")
+vif(m_binom_multiple)
+```
+
+Indeed! In a real analysis, we would likely remove one of these predictors and assess their effects separately. For now, though, we'll continue with this model just for the sake of the exercise.
+
+```{r}
+summary(m_binom_multiple)
+```
+
+In this model, two predictors are continuous and one is categorical, so it's important to understand how to interpret their effects on the model outcome:
+
+- The intercept $\beta_0$ represents the log-odds of a car being manual when horsepower is 0, weight is 0, and the engine is V-shaped (the reference category, `vs` = 0). As in the previous model, this scenario is not realistic for actual cars, so the intercept primarily serves as the baseline. The odds of being manual at this baseline are $e^{\beta_0}$, and the corresponding probability (i.e., the probability of a car being manual under the baseline conditions) is $\text{logit}^{-1}(\beta_0) = \frac{1}{1 + e^{-\beta_0}}$.
+
+- Horsepower $\beta_1$ represents the change in log-odds of being manual for a 1-unit increase in horsepower, holding weight and engine shape constant. If $\beta_1 > 0$, higher horsepower makes a manual transmission more likely; if $\beta_1 < 0$, higher horsepower makes it less likely. 
+
+- Weight $\beta_2$ represents the change in log-odds of being manual for a 1-unit increase in weight (measured in lbs), holding horsepower and engine shape constant. If $\beta_2 > 0$, heavier cars are more likely to be manual; if $\beta_2 < 0$, heavier cars are less likely to be manual.
+
+- Engine shape $\beta_3$ represents the difference in log-odds of being manual between straight engines (`vs` = 1) and V-shaped engines (`vs` = 0), holding horsepower and weight constant. If $\beta_3 > 0$, cars with straight engines are more likely to be manual compared to V-shaped; if $\beta_3 < 0$, cars with straight engines are less likely than those with V-shaped engines to be manual (than automatic).
+
+Based on the p-values for each predictor, weight is the only variable that shows a statistically significant association with the probability of a car being manual rather than automatic.
+
+How can we calculate the predicted probability that a car with specific characteristics will be manual? For example, what is the likelihood that a car with 110 horsepower, a weight of 2.5 (in 1000 lbs, roughly 1,134 kg), and a straight engine will have a manual transmission rather than an automatic one?
+
+```{r}
+hp_val <- 110
+wt_val <- 2.5
+vs_val <- 0
+
+log_odds <- coef(m_binom_multiple)[1] + 
+            coef(m_binom_multiple)[2] * hp_val + 
+            coef(m_binom_multiple)[3] * wt_val + 
+            coef(m_binom_multiple)[4] * vs_val
+
+odds <- exp(log_odds)
+prob <- odds / (1 + odds)
+prob
+```
+
+The probability that a car with this horsepower, weight, and engine shape has a manual transmission (rather than an automatic transmission) is `r round(prob,2)`.
+
+# Multinomial logistic regression
+
+Let's continue working with the same dataset, but now consider a slightly different question: instead of examining the probability of a car being automatic or manual based on its characteristics, we want to predict the number of gears (`gear`) based on these same characteristics. In the `mtcars` dataset, gear can take three values: 3, 4, or 5. Since this outcome has more than two categories and the categories are not ordered, we need to use multinomial logistic regression.
+
+In R, the most commonly used package for fitting multinomial logistic regression is `nnet`, so make sure to load it first:
+
+```{r}
+library("nnet")
+```
+
+Before fitting the model, make sure that the predictor is a factor. The syntax for fitting a multinomial logistic regression model is very similar to that we used above when fitting a binomial logistic regression:
+
+```{r}
+mtcars$gear <- factor(mtcars$gear)
+m_multinom <- multinom(gear ~ hp + wt + vs, data = mtcars)
+```
+
+The output in the console you will see when fitting this model shows the value of the objective function at different iterations. This information is purely informational: it shows that the model is fitted using an iterative optimisation algorithm, which minimises the negative log-likelihood to find the final coefficient estimates. 
+
+In a multinomial logistic regression, the model estimates the log-odds of each outcome category relative to a reference category. The multinomial logistic regression in `nnet::multinom()` uses treatment contrasts by default, which compares all other levels to the *first* level of the factor, here, 3:
+
+```{r}
+levels(mtcars$gear)
+```
+
+The model therefore takes the form:
+
+\[
+\log \left( \frac{P(\text{gear} = 4)}{P(\text{gear} = 3)} \right) 
+= \beta_{0,4} + \beta_{1,4} \cdot hp + \beta_{2,4} \cdot wt + \beta_{3,4} \cdot vs
+\]
+
+and 
+
+\[
+\log \left( \frac{P(\text{gear} = 5)}{P(\text{gear} = 3)} \right) 
+= \beta_{0,5} + \beta_{1,5} \cdot hp + \beta_{2,5} \cdot wt + \beta_{3,5} \cdot vs
+\]
+
+In these equations, 
+
+- the intercepts $\beta_{0,4}$ and $\beta_{0,5}$ represent the log-odds of the outcome being `gear` = 4 or `gear` = 5 relative to the reference category `gear` = 3 when all predictors (`hp`, `wt`, `vs`) are 0;
+  
+- the horsepower coefficients $\beta_{1,4}$ and $\beta_{1,5}$ represent the change in log-odds of being in `gear` = 4 or `gear` = 5 versus `gear` = 3 for a one-unit increase in horsepower, holding weight and engine shape constant. Positive values indicate that higher horsepower increases the odds of gear 4/5 relative to gear 3, negative values indicate that higher horsepower decreases those odds;
+  
+- the weight coefficients $\beta_{2,4}$ and $\beta_{2,5}$ represent the change in log-odds of being in `gear` = 4 or `gear` = 5 versus `gear` = 3 for a one-unit increase in weight, holding horsepower and engine shape constant. Positive values indicate that heavier cars are more likely to be in that gear compared to the reference. Negative values indicate the opposite;
+  
+- Engine shape coefficients $\beta_{3,4}$ and $\beta_{3,5}$ represent the difference in log-odds of being in `gear` = 4 or `gear` = 5 versus `gear` = 3 for straight engines (`vs` = 1) compared to V-shaped engines (`vs` = 0), holding horsepower and weight constant. Positive values mean that straight engines increase the odds of that gear relative to the reference. Negative values mean they decrease the odds.
+
+Let's begin by checking the assumptions. From our previous analysis, we already know that this model may have collinearity issues:
+
+```{r}
+vif(m_multinom)
+```
+
+Next, let's check the linearity assumption. We can do this by plotting the relationship between each continuous predictor and the model-predicted logits for each outcome category.  
+
+The first step is to extract the predicted probabilities:
+
+```{r}
+pred_probs <- predict(m_multinom, type = "probs")
+head(pred_probs)
+```
+
+Next, we compute the logits for each category relative to the baseline and organise them into a data frame:
+
+```{r}
+logits <- log(pred_probs / pred_probs[, 1])
+head(logits)
+
+df <- data.frame(
+  hp = mtcars$hp,
+  wt = mtcars$wt,
+  vs = mtcars$vs,
+  logit_4vs3 = logits[, "4"],
+  logit_5vs3 = logits[, "5"])
+
+head(df)
+```
+
+Now we are ready to plot!
+
+```{r, warning = F}
+# hp vs logit of 4 vs 3
+ggplot(df, aes(x = hp, y = logit_4vs3)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  theme_classic() + 
+  labs(x = "Horsepower", y = "Logit (4 gears vs. 3 gears)")
+
+# hp vs logit of 5 vs 3
+ggplot(df, aes(x = hp, y = logit_5vs3)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  theme_classic() + 
+  labs(x = "Horsepower", y = "Logit (5 gears vs. 3 gears)")
+
+# wt vs logit of 4 vs 3
+ggplot(df, aes(x = wt, y = logit_4vs3)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  theme_classic() + 
+  labs(x = "Weight", y = "Logit (4 gears vs. 3 gears)")
+
+# wt vs logit of 5 vs 3
+ggplot(df, aes(x = wt, y = logit_5vs3)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  theme_classic() + 
+  labs(x = "Weight", y = "Logit (5 gears vs. 3 gears)")
+```
+
+The linearity assumption doesn't appear to hold in most cases.  
+
+Now, let's move on to the model output and make sure we understand what it means:
+
+```{r}
+summary(m_multinom)
+```
+
+The first thing to notice is that, unlike `glm()`, the `multinom()` function does not automatically provide z-values or p-values in its summary output. You only get: 
+
+- the coefficients;
+  
+- the standard errors;
+  
+- the residual deviance: a measure of how well your model fits the data compared to a saturated model that fits the data perfectly; analogous to the residual sum of squares in linear regression but adapted for models based on likelihoods (the lower the value, the better the model);
+
+- the AIC: a measure of the balance between model fit and model complexity (the lower the AIC, the better the model).
+
+If we want a more "classic" output, we can use the `tidy()` function from the `broom` package (which also have the option to include confidence intervals, which might be useful:
+
+```{r}
+library("broom")
+
+tidy(m_multinom, conf.int = TRUE)
+```
+
+We can also use this function to exponentiate the coefficients:
+
+```{r}
+tidy(m_multinom, conf.int = TRUE, exponentiate = TRUE)
+```
+
+Alternatively, we can use the function `tab_model()` from the `sjPlot` package (note that you can use this function to create summaries for other models too):
+
+```{r}
+library("sjPlot")
+tab_model(m_multinom)
+```
+
+We can also compute these statistics manually using a Wald test. This test is typically used to check whether regression coefficients are significantly different from zero (or from some other hypothesised value). The test is performed by dividing each coefficient by its standard error to calculate a z-statistic (and note that the `summary()` function in R also uses this test to report the p- and the z-values):
+
+```{r}
+(z <- summary(m_multinom)$coefficients / summary(m_multinom)$standard.errors)
+```
+
+```{r}
+(p <- 2 * (1 - pnorm(abs(z))))
+```
+
+Recall that we are comparing gears 4 and 5 to gear 3. Looking at the z- and p-values, none of the predictors are statistically significant, that is, we cannot reject the null hypothesis for any of them. In other words, in this dataset, horsepower (`hp`), weight (`wt`), and engine shape (`vs`) do not appear to have a significant effect on the odds of a car having 4 or 5 gears compared to 3 gears. 
+
+Even though these effects are not significant, it's still useful to examine the coefficients to understand their meaning. Let's do this for the comparison between gear 4 and gear 3:
+
+- The `hp` coefficient is negative, suggesting that higher horsepower slightly decreases the log-odds of a car having 4 gears versus 3 gears;
+
+- The `wt` coefficient is essentially zero, meaning weight has almost no effect;
+
+- The `vs` coefficient is negative, indicating a small decrease in the log-odds of having 4 gears (compared to 3 gears) for straight engines compared to V-shaped engines.  
+We can exponentiate the coefficients using the `exp()` function, just like we did before:
+
+```{r}
+exp(coef(m_multinom))
+```
+
+As mentioned earlier, exponentiating the coefficients converts log-odds into odds ratios: an odds ratio greater than 1 indicates that increasing the predictor increases the odds of being in that outcome category relative to the reference. An odds ratio less than 1 indicates that increasing the predictor decreases the odds. In our example:  
+
+- For the gear 4 vs. gear 3 comparison, the odds ratio for `hp` is slightly below 1, meaning that each additional unit of horsepower slightly decreases the odds of having 4 gears (vs. 3 gears), holding other predictors constant.
+
+- For the gear 5 vs. gear 3 comparison, the odds ratio for `hp` is slightly above 1, meaning that each additional unit of horsepower slightly increases the odds of having 5 gears (vs. 3 gears), holding other predictors constant.  
+
+Finally, we can extract the probabilities using the `fitted()` function:
+
+```{r}
+predprob <- fitted(m_multinom)
+head(predprob)
+```
+
+The `fitted()` function provides the predicted probabilities for each observation and each outcome category. For example, for the Mazda RX4, the model estimates a 22% chance of having 3 gears, a 76% chance of having 4 gears, and a 2% chance of having 5 gears. These probabilities represent the model's predicted likelihood of each gear count based on the car's weight, horsepower, and engine shape. And the model is correct!
+
+```{r}
+mtcars["Mazda RX4", "gear"]
+```
+
+## Ordinal logistic regression
+
+Ordinal regression is used when your outcome variable is *categorical with an inherent order*, but the distances between categories are not necessarily assumed to be equal. In ordinal regression, we model how predictors affect the probability of being in higher vs. lower categories. The most common type of such models is the *proportional odds logistic regression*, which assumes that the odds ratios are proportional, i.e., that the effect of a predictor is the same across all thresholds separating the outcome categories: the increase in log-odds for a one-unit change in the predictor is assumed to be the same regardless of which levels you compare.
+
+As an example, let's use a simulated dataset available from [UCLA's Statistical Consulting website](https://stats.oarc.ucla.edu/). This dataset simulates a study on factors that influence students' decisions about whether to apply to graduate school. College juniors were asked how likely they were to apply (unlikely, somewhat likely, or very likely) and additional information was collected on their parents' education, their Grade Point Average (GPA), and whether their school is public or private.
+
+```{r}
+library("MASS")
+library("haven")
+
+data <- read_dta("https://stats.idre.ucla.edu/stat/data/ologit.dta")
+data$apply <- as.factor(data$apply)
+data$pared <- as.factor(data$pared)
+data$public <- as.factor(data$public)
+head(data)
+```
+
+In this dataset, there are four variables:
+
+- `apply`: has three levels (unlikely, somewhat likely, very likely), coded as 0, 1, and 2;
+
+- `pared`: a 0/1 variable indicating whether at least one parent has a graduate degree;
+
+- `public`: a 0/1 variable where 1 indicates that the student's school is public and 0 indicates private;
+
+- `gpa`: the student's Grade Point Average.
+
+Before we fit the model, let's consider the contrast codes. As with other models, the default for unordered factors is *treatment contrasts*, meaning that the first level of the factor is used as the reference category, and all other levels are compared to it:  
+
+- For the variable `pared`, the reference category will be *no degree*.
+
+- For `public`, the reference category will be *private*.  
+Now, let's fit the model, setting the parameter `Hess = TRUE` to compute standard errors, and look at the model outcome:
+
+```{r}
+m_ord <- polr(apply ~ pared + public + gpa, data = data, Hess = TRUE)
+```
+
+The most important assumption of a proportional odds model is that the effect of each predictor is constant across all cut-points of the ordered outcome. In other words, ordinal logistic regression assumes that the coefficient describing the relationship between the lowest category versus all higher categories is the same as the coefficient for the next lowest category versus all higher categories, and so on. If this assumption doesn't hold, we would need different sets of coefficients to describe the relationship between each pair of outcome groups. 
+
+There are tests to assess the proportional odds assumption (e.g., [Brant, 1990](https://doi.org/10.2307/2532457), [Fagerland and Hosmer, 2013](https://doi.org/10.1002/sim.5645)), but these tests can be problematic. They may lack power in small samples or be too sensitive in large samples. For this reason, it is generally best to examine the assumption numerically and/or visually.   
+
+One common approach is to fit a separate binary logistic regression for each threshold of the ordinal outcome and then compare the coefficients across thresholds. If the proportional odds assumption holds, the coefficients should be very similar. 
+
+In our case, we will need to fit two binary logistic regressions: 
+
+- Model 1: "somewhat likely" vs. "unlikely";
+
+- Model 2: "very likely" vs. "somewhat unlikely".
+
+Each model will estimate its own odds ratio. If the odds ratios are roughly equal across models, the proportional odds assumption is reasonable. For instance, if GPA shifts the probability toward higher outcome categories and the magnitude of this shift is the same across all thresholds on the logit scale, the assumption holds.  
+
+Our first step is to create new binary variables for these models:
+
+```{r}
+data <- data %>%
+  mutate(# y1 = Apply > unlikely
+         y1 = fct_collapse(apply,
+                           ">unlikely"  = c(1, 2),
+                           "<=unlikely" = 0),
+         y1 = relevel(y1, ref = "<=unlikely"),
+         # y2 = Apply > somewhat likely
+         y2 = fct_collapse(apply,
+                           ">somewhat_likely"  = 2,
+                           "<=somewhat_likely" = c(0, 1)),
+         y2 = relevel(y2, ref = "<=somewhat_likely"))
+
+head(data)
+```
+
+Now we can fit the models:
+
+```{r}
+m_binary1 <- glm(y1 ~ pared + public + gpa,
+                   family = binomial, data = data)
+
+m_binary2 <- glm(y2 ~ pared + public + gpa,
+                   family = binomial, data = data)
+```
+
+Finally, we compare the odds ratios:
+
+```{r}
+exp(cbind("ordinal"  = m_ord$coefficients,
+    "binary 1" = m_binary1$coefficients[-1],
+    "binary 2" = m_binary2$coefficients[-1]))
+```
+
+The proportional odds assumption seems questionable for `public` and `GPA`, but it appears reasonably well met for `pared`. This suggests that the effects of attending a public versus private school and of GPA differ for the transition from "unlikely" to "somewhat likely" compared with the transition from "somewhat likely" to "very likely".  
+
+In R, there is a test that performs this check automatically, implemented in the `brant` package. Let's compare the results of this test to what we just computed manually:
+
+```{r}
+library("brant")
+brant(m_ord)
+```
+
+The test suggests that the proportional odds assumption holds. This is a good reminder that it's often best to re-check things manually and not rely solely on p-values from formal tests.
+
+Ok, so what about model interpretation?
+
+```{r}
+summary(m_ord)
+```
+
+We can see that the regression output coefficient table includes the value of each coefficient, its standard error, and the t-value; however, no significance tests (p-values) are shown. To obtain these, you can do the following:
+
+```{r}
+coefs <- coef(summary(m_ord))
+t_vals <- coefs[, "t value"]
+(p_vals <- 2 * (1 - pnorm(abs(t_vals))))
+```
+
+Now, how should we interpret these results? Because it is difficult to interpret the coefficients in terms of log-odds, let's convert them to (proportional) odds ratios and explore predictors one by one:
+
+```{r}
+exp(coef(m_ord))
+```
+
+- `pared`: For students whose parents attended graduate school (`pared` = 1), the odds of being *somewhat* or *very likely* (vs. *unlikely*) to apply are `r round(exp(coef(m_ord))[1],2)` times the odds for students whose parents did not attend graduate school (`pared` = 0), holding other variables constant. The model also indicates that this effect is statistically significant, meaning we can reject the null hypothesis of no effect for this predictor.
+
+- `public`: For students at public schools (`public` = 1), the odds of being more likely to apply are `r (1-round(exp(coef(m_ord))[2],2))*100` percent lower than for students at private schools. How is this computed? The coefficient is negative on the log-odds scale, giving an odds ratio below 1, which indicates lower odds of applying. To express this as a percentage decrease, we subtract the odds ratio from 1 and multiply by 100, giving `r (1-round(exp(coef(m_ord))[2],2))*100`. This effect is not statistically significant.
+
+- `gpa`: This is a continuous predictor. The odds ratio of `r round(exp(coef(m_ord))[3],2)` indicates that for each one-unit increase in GPA, the odds of being more likely to apply increase by that amount, holding other variables constant. Like for `pared`, this effect is statistically significant.
+
+The model output also provides estimates for the two *intercepts (cut points)*, which indicate where the latent continuous variable underlying the outcome variable (how likely a student is to apply to graduate school) is divided to form the three observed categories:
+
+- `0|1`: threshold between category 0 and category 1 or higher;  
+
+- `1|2`: threshold between categories 0 or 1 and category 2 or higher.  
+
+In other words, the predicted category is determined as follows:
+
+\[
+2.20 + 1.05 \times \texttt{pared} - 0.06 \times \texttt{public} + 0.62 \times \texttt{gpa}
+\]
+
+- If the outcome variable is below the first threshold, the predicted category is 0 (unlikely);
+
+- If it is between the thresholds, the predicted category is 1 (somewhat likely);
+
+- If it is above the second threshold, the predicted category is 2 (very likely).  
+
+To illustrate, if a student attends a private school (`public` = 0), has a GPA of 3, and their parents have a graduate degree (`pared` = 1), they would fall into category 1 (somewhat likely):
+
+\[
+1.05 \times 1 - 0.06 \times 0 + 0.62 \times 3 = 2.91
+\]
+
+It's useful to look at examples to better understand how the model works but, in general, these cut-off points are not often emphasised in the interpretation of the results. 
+
+Finally, the output table also reports the residual deviance and the AIC, which are measures of model fit. Residual deviance is defined as twice the log-likelihood of the fitted model. Like AIC, lower values indicate better fit; however, these measures are meaningful only when comparing to other models.
+
+This concludes our short introductory course! Make sure to download the RMarkdown file, which is the source of this material, and try running all the code on your own computer. It's also a good idea to apply these models to other datasets (e.g., built-in R datasets if you don't have your own) and practise understanding the output step by step, just like we did here.
