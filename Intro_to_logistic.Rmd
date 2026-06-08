@@ -1,6 +1,6 @@
 ---
 title: "Introduction to logistic regression"
-author: "Maria Korochkina"
+author: "Dr Maria Korochkina"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
   prettydoc::html_pretty:
@@ -48,7 +48,17 @@ Recall that we use a linear regression to predict a continuous outcome:
 $$
 y = \beta_0 + \beta_1 x_1 + \ldots + \beta_n x_n + \epsilon
 $$
-In the formula above, $y$ is the *dependent variable* (i.e., the outcome you want to predict) and $x_n$ to $x_n$ are the *independent variables* (also called *predictors*). $\beta_0$ is the *intercept* (the expected value of $y$ when all predictors are 0), and $\beta_1$ to $\beta_n$ are the regression *coefficients* (or *slopes*). Each slope represents the change in $y$ for a one-unit change in the corresponding predictor $x_i$, while holding the other predictors constant. Finally, $\epsilon$ is the *error term* (or *residual*), which represents the variation in $y$ that is not explained by the predictors in the model.
+In the formula above:
+
+- $y$ is the *dependent variable* (i.e., the outcome you want to predict);
+
+- $x_n$ to $x_n$ are the *independent variables* (also called *predictors*);
+
+- $\beta_0$ is the *intercept* (the expected value of $y$ when all predictors are 0);
+
+- $\beta_1$ to $\beta_n$ are the regression *coefficients* (or *slopes*). Each slope represents the change in $y$ for a one-unit change in the corresponding predictor $x_i$, while holding the other predictors constant; 
+
+- $\epsilon$ is the *error term* (or *residual*), which represents the variation in $y$ that is not explained by the predictors in the model.
 
 In logistic regression, the overall structure of the model is very similar. However, instead of modelling $y$ directly, we model the *logit of the probability* that $y$ takes a certain value (e.g., 0 or 1) or belongs to a particular class. 
 
@@ -56,7 +66,11 @@ In logistic regression, the overall structure of the model is very similar. Howe
 $$
 \text{logit}(p) = \log\left(\frac{p}{1 - p}\right) = \beta_0 + \beta_1 x_1 + \ldots + \beta_k x_k
 $$
-Here, $p$ is the *probability* that $y$ belongs to the class of interest (e.g., $P(Y=1)$). The term $\text{logit}(p)$ is the *log-odds*, which means the logarithm of the odds. The odds are defined as $p/(1-p)$, or the ratio of the probability of success to the probability of failure. 
+Here, 
+
+- $p$ is the *probability* that $y$ belongs to the class of interest (e.g., $P(Y=1)$);
+
+- the term $\text{logit}(p)$ is the *log-odds*, which means the logarithm of the odds. The odds are defined as $p/(1-p)$, or the ratio of the probability of success to the probability of failure. 
 
 The right-hand side of the equation ($\beta_0 + \beta_1 x_1 + \ldots + \beta_n x_n$) is called the *linear predictor*, just as in linear regression. The first thing you might notice is that this expression does not include a residual term, $\epsilon$. In a linear regression model, the outcome is numeric, and since predictions are never perfect, the residual captures what is left unexplained. We usually assume this residual follows a normal distribution, and that is where the randomness in the model comes from. By contrast, in logistic regression the outcome is categorical (e.g., pass vs. fail). The model predicts the probability of each possible category. We don't need an explicit residual term here because the randomness is already built in: each outcome is like a coin flip with probability $p$. 
 
@@ -72,7 +86,7 @@ $$
 p = \frac{1}{1 + e^{-(\beta_0 + \beta_1x_1 + \ldots + \beta_n x_n)}}
 $$
 
-The word *sigmoid* comes from the Greek letter $\sigma$ (sigma) because the curve of the logistic function has an s-shape: it starts near 0, increases smootly, and then levels off near 1. If we simply the expression above and replace the linear predictor with the term $z$, the sigmoid can be expressed as:
+The word *sigmoid* comes from the Greek letter $\sigma$ (sigma) because the curve of the logistic function has an s-shape: it starts near 0, increases smootly, and then levels off near 1. If we take the expression above and replace the linear predictor with the term $z$, the sigmoid can be expressed as:
 
 $$
 p = \frac{1}{1 + e^{-z}}
@@ -458,7 +472,7 @@ The first thing to notice is that, unlike `glm()`, the `multinom()` function doe
 
 - the AIC: a measure of the balance between model fit and model complexity (the lower the AIC, the better the model).
 
-If we want a more "classic" output, we can use the `tidy()` function from the `broom` package (which also have the option to include confidence intervals, which might be useful:
+If we want a more "classic" output, we can use the `tidy()` function from the `broom` package (which also has the option to include confidence intervals, which might be useful:
 
 ```{r}
 library("broom")
